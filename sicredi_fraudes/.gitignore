@@ -1,0 +1,74 @@
+﻿# =============================================================================
+# .gitignore — Prevencao Inteligente a Fraudes (Sicredi)
+# =============================================================================
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.pyo
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+
+# --- Ambientes virtuais ---
+env/
+venv/
+.venv/
+ENV/
+.conda/
+
+# --- Credenciais e segredos (NUNCA versionar) ---
+.env
+.env.*
+*.env
+secrets.toml
+.streamlit/secrets.toml
+credentials.json
+token.json
+*.pem
+*.key
+api_keys.txt
+config_local.py
+ibm_credentials.env
+wml_credentials.json
+.ibm_cloud_credentials
+
+# --- Testes e cobertura ---
+.pytest_cache/
+.tox/
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+test-results/
+
+# --- IDEs e editores ---
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# --- Sistema operacional ---
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- Logs e temporarios ---
+*.log
+*.tmp
+*.bak
+*.orig
+
+# --- Jupyter ---
+.ipynb_checkpoints/
+*.ipynb
+
+# --- Streamlit ---
+.streamlit/
+!.streamlit/.gitkeep
+
+# --- Dados reais (nunca versionar) ---
+data/real/
