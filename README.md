@@ -1,81 +1,101 @@
-# 🛡️ Prevenção Inteligente a Fraudes — Sicredi
+# 🛡️ Prevenção Inteligente a Fraudes e Segurança do Associado — Sicredi
 
-> Agente de Inteligência Artificial para prevenção inteligente a fraudes em compras com cartões.  
+> Protótipo de agente de IA para análise de transações fictícias com cartão,
+> identificação de comportamentos suspeitos e recomendação de ações preventivas.  
 > Proposta desenvolvida para a competição de inovação do Sicredi.
 
 ---
 
-## 📋 Descrição
+## ⚠️ Aviso Importante
 
-Este projeto implementa um **agente de IA** capaz de analisar transações com cartão em tempo real, identificar comportamentos suspeitos e recomendar ações preventivas — sem bloquear operações legítimas.
+> **Todos os dados utilizados neste protótipo são 100% fictícios e sintéticos.**  
+> Nenhuma informação real de clientes, transações ou associados é armazenada ou utilizada.  
+> Este sistema identifica *indícios* de comportamento suspeito — **não confirma fraudes.**  
+> Nenhuma ação irreversível (bloqueio de cartão, envio de mensagens reais) é executada.
 
-O sistema utiliza um **motor de avaliação de risco baseado em regras e estatística**, com interface interativa construída em Streamlit. A integração com **IBM watsonx Orchestrate** está planejada para enriquecer explicações em linguagem natural.
+---
 
-> ⚠️ **Todos os dados utilizados neste protótipo são 100% fictícios e sintéticos.**  
-> Nenhuma informação real de clientes, transações ou associados é armazenada ou utilizada.
+## 🎯 O que o sistema faz
+
+1. **Analisa transações fictícias** de cartão em tempo real
+2. **Pontua o risco** de 0 a 100 usando 7 regras auditáveis
+3. **Classifica o nível** de risco: baixo / médio / alto
+4. **Explica os fatores** que contribuíram para a pontuação
+5. **Recomenda ações** preventivas proporcionais ao risco
+6. **Nunca bloqueia** — sempre recomenda revisão humana para casos suspeitos
 
 ---
 
 ## 🏗️ Arquitetura
 
 ```
-Transação recebida
+Interface (Streamlit — app.py)
         │
         ▼
-Motor de Avaliação de Risco
-   ├── Valor elevado
+Motor Antifraude (risk_engine.py)
+   ├── Valor elevado (z-score)
    ├── Categoria incomum
    ├── Localização incomum
    ├── Horário fora do padrão
-   ├── Alta frequência
+   ├── Alta frequência (janela 30min)
    ├── País estrangeiro
    └── Canal suspeito
         │
         ▼
-Pontuação 0–100 + Classificação (baixo / médio / alto)
+ResultadoAnalise → pontuação, nível, fatores, recomendação
         │
-        ▼
-Recomendação preventiva + Justificativa
-        │
-        └──▶ [IBM watsonx Orchestrate — integração planejada]
+        └──▶ [IBM watsonx Orchestrate — integração pendente]
+                Enriquece a explicação em linguagem natural
+                NÃO altera a pontuação calculada
 ```
+
+Documentação detalhada: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
 
 ---
 
 ## 📁 Estrutura do Projeto
 
 ```
-sicredi_fraudes/
-├── app.py                      ← Interface principal (Streamlit)
-├── requirements.txt            ← Dependências Python
-├── src/
-│   ├── core/
-│   │   ├── models.py           ← Modelos de dados (Transacao, Perfil, Resultado)
-│   │   ├── risk_engine.py      ← Motor de avaliação de risco
-│   │   └── watsonx_client.py   ← Integração planejada com IBM watsonx
-│   ├── data/
-│   │   └── generator.py        ← Gerador de dados fictícios e sintéticos
-│   └── ui/
-│       └── __init__.py
-├── tests/
-│   ├── conftest.py             ← Fixtures compartilhadas
-│   └── test_risk_engine.py     ← Testes do motor de risco
-└── docs/
-    └── watsonx/                ← Guia de configuração IBM watsonx
+sicredi-prevencao-fraudes/
+├── README.md                           ← Este arquivo
+├── COLABORACAO.md                      ← Guia de colaboração Git
+├── LICENSE
+├── docs/
+│   ├── ARCHITECTURE.md                 ← Arquitetura e responsabilidades
+│   ├── INTEGRATION_CONTRACTS.md        ← Contratos de interface entre módulos
+│   ├── TEAM_WORKFLOW.md                ← Fluxo de trabalho da equipe
+│   ├── TASKS.md                        ← Tarefas, dependências, critérios
+│   ├── WATSONX_ORCHESTRATE.md          ← Plano de integração IBM watsonx
+│   ├── BOB_2_PROMPT.md                 ← Instruções para o Bob 2 (antifraude)
+│   └── BOB_3_PROMPT.md                 ← Instruções para o Bob 3 (interface)
+└── sicredi_fraudes/
+    ├── app.py                          ← Interface Streamlit principal
+    ├── requirements.txt
+    ├── src/
+    │   ├── core/
+    │   │   ├── models.py               ← Transacao, PerfilAssociado, ResultadoAnalise
+    │   │   ├── risk_engine.py          ← Motor de avaliação de risco
+    │   │   └── watsonx_client.py       ← Integração IBM watsonx (pendente)
+    │   └── data/
+    │       └── generator.py            ← Gerador de dados sintéticos
+    └── tests/
+        ├── conftest.py                 ← Fixtures compartilhadas
+        └── test_risk_engine.py         ← 6 cenários + regras individuais
 ```
 
 ---
 
 ## ⚙️ Tecnologias
 
-| Componente         | Tecnologia                          |
-|--------------------|-------------------------------------|
-| Interface          | Python 3.11+ + Streamlit            |
-| Motor de risco     | Python puro (regras + estatística)  |
-| Gerador de dados   | Faker + gerador sintético próprio   |
-| Gráficos           | Plotly                              |
-| Testes             | Pytest                              |
-| IA planejada       | IBM watsonx Orchestrate             |
+| Componente         | Tecnologia                           |
+|--------------------|--------------------------------------|
+| Interface          | Python 3.11+ · Streamlit             |
+| Motor de risco     | Python puro (regras + estatística)   |
+| Gráficos           | Plotly                               |
+| Dados sintéticos   | Faker + gerador próprio              |
+| Testes             | Pytest                               |
+| IA planejada       | IBM watsonx Orchestrate (pendente)   |
+| Modelo LLM         | IBM Granite 13B Instruct v2          |
 
 ---
 
@@ -84,13 +104,14 @@ sicredi_fraudes/
 ### Pré-requisitos
 
 - Python 3.11 ou superior
+- Git
 - pip
 
 ### Passos
 
 ```bash
 # 1. Clone o repositório
-git clone https://github.com/leoncs5/sicredi-prevencao-fraudes.git
+git clone https://github.com/LeonCS5/sicredi-prevencao-fraudes.git
 cd sicredi-prevencao-fraudes
 
 # 2. Crie e ative o ambiente virtual
@@ -111,91 +132,87 @@ pip install -r sicredi_fraudes/requirements.txt
 ## ▶️ Execução
 
 ```bash
-# Na raiz do repositório, com o ambiente virtual ativado:
+# Na raiz do repositório, com ambiente virtual ativado:
 streamlit run sicredi_fraudes/app.py
 ```
 
-A aplicação abrirá automaticamente no navegador em `http://localhost:8501`.
+A aplicação abrirá automaticamente em `http://localhost:8501`
+
+### Páginas disponíveis
+
+| Página | Descrição |
+|---|---|
+| 📊 Painel | Monitoramento geral — KPIs, gráficos, lista de transações |
+| 🔍 Detalhe | Análise detalhada de uma transação específica |
+| 🧪 Simulador | Criar e analisar transações fictícias em tempo real |
+| 📋 Histórico | Registro das análises realizadas na sessão |
+| ℹ️ Sobre | Arquitetura, tecnologias e declarações de limites |
 
 ---
 
 ## 🧪 Testes
 
 ```bash
-# Na raiz do repositório:
+# Executar todos os testes
 pytest sicredi_fraudes/tests/ -v
+
+# Com relatório de cobertura
+pytest sicredi_fraudes/tests/ -v --tb=short
 ```
+
+### Cenários testados
+
+1. ✅ Compra habitual de baixo valor → risco baixo
+2. ✅ Compra de valor muito elevado → fator detectado
+3. ✅ Várias compras em sequência → alta frequência detectada
+4. ✅ Compra em localização incomum → fator localização
+5. ✅ Transação com dados mínimos → sistema não falha
+6. ✅ Múltiplos sinais simultâneos → risco alto
 
 ---
 
-## 🔐 Configuração de Credenciais (opcional)
+## 🔐 Configuração do watsonx (opcional)
 
-Para habilitar a integração com IBM watsonx Orchestrate, crie o arquivo `.streamlit/secrets.toml` (**nunca versionar**):
+Para habilitar a explicação via IBM watsonx Orchestrate:
 
-```toml
-# .streamlit/secrets.toml — NÃO commitar este arquivo
-WATSONX_API_KEY = "sua-chave-aqui"
-WATSONX_PROJECT_ID = "seu-project-id"
-WATSONX_URL = "https://us-south.ml.cloud.ibm.com"
+```bash
+# Crie o arquivo .env na raiz (NUNCA commitar)
+WATSONX_API_KEY=sua-api-key
+WATSONX_PROJECT_ID=seu-project-id
+WATSONX_URL=https://us-south.ml.cloud.ibm.com
+
+# Instale o SDK
+pip install ibm-watsonx-ai
 ```
 
-O arquivo `.gitignore` já está configurado para excluir este arquivo do controle de versão.
+Sem credenciais, o sistema opera completamente com o motor local.
 
 ---
 
 ## 🤝 Colaboração — Branches
 
-Este repositório usa o seguinte fluxo de trabalho com branches:
+| Branch | Responsável | Foco |
+|---|---|---|
+| `main` | Todos (via PR) | Branch principal |
+| `feature/analise-antifraude` | Bob 2 | Motor de risco, dados, testes |
+| `feature/interface-dashboard` | Bob 3 | Interface, painel, UX |
+| `feature/integracao-testes` | Bob 1 | Integração, watsonx, docs |
 
-| Branch                     | Responsável                              |
-|----------------------------|------------------------------------------|
-| `main`                     | Branch principal — apenas via Pull Request |
-| `feature/analise-fraudes`  | Análise de fraudes e motor de risco      |
-| `feature/interface`        | Interface Streamlit e visualizações      |
-| `feature/integracao-testes`| Integração watsonx, testes e documentação |
-
-Consulte o [Fluxo de Colaboração](#fluxo-de-colaboração) abaixo.
+Fluxo detalhado: [`docs/TEAM_WORKFLOW.md`](docs/TEAM_WORKFLOW.md)
 
 ---
 
-## 🔄 Fluxo de Colaboração
+## 📊 Limitações Documentadas
 
-```bash
-# 1. Atualize sua referência da main
-git fetch origin
-git checkout main
-git pull origin main
-
-# 2. Vá para sua branch (ou crie-a)
-git checkout feature/sua-branch
-# ou para criar: git checkout -b feature/sua-branch
-
-# 3. Implemente sua funcionalidade
-
-# 4. Execute os testes
-pytest sicredi_fraudes/tests/ -v
-
-# 5. Revise o que mudou
-git diff
-
-# 6. Adicione e faça commit descritivo
-git add .
-git commit -m "feat(modulo): descrição clara do que foi feito"
-
-# 7. Envie para o GitHub
-git push origin feature/sua-branch
-
-# 8. Abra um Pull Request no GitHub para a main
-# 9. Aguarde revisão antes de fazer merge
-```
-
-> ❌ Nunca faça `git push --force`  
-> ❌ Nunca commite diretamente na `main`  
-> ❌ Nunca armazene senhas, tokens ou chaves no código
+- O sistema usa **dados 100% fictícios** — sem avaliação com dados reais
+- As pontuações **não são probabilidades estatisticamente calibradas**
+- A integração com IBM watsonx Orchestrate está **planejada mas pendente**
+- Nenhuma ação real (bloqueio, notificação) é executada
+- O IBM Bob é uma ferramenta de desenvolvimento — não executa o agente em produção
 
 ---
 
 ## 📜 Licença
 
-Projeto desenvolvido exclusivamente para fins competitivos internos do Sicredi.  
+Projeto desenvolvido para fins competitivos internos do Sicredi.  
 Dados fictícios — sem uso de informações reais de clientes.
