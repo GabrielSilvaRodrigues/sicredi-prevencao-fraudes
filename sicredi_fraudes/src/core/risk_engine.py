@@ -24,13 +24,14 @@ from src.core.models import FatorRisco, PerfilAssociado, ResultadoAnalise, Trans
 # ---------------------------------------------------------------------------
 # Constantes de peso (ajustáveis sem alterar a lógica de cada regra)
 # ---------------------------------------------------------------------------
-PESO_VALOR_ALTO = 25
-PESO_CATEGORIA_INCOMUM = 15
-PESO_LOCALIZACAO_INCOMUM = 20
-PESO_HORARIO_INCOMUM = 10
-PESO_VELOCIDADE_TRANSACOES = 20
-PESO_PAIS_ESTRANGEIRO = 15
-PESO_CANAL_SUSPEITO = 10
+PESO_VALOR_ALTO = 30
+PESO_CATEGORIA_INCOMUM = 20
+PESO_LOCALIZACAO_INCOMUM = 25
+PESO_HORARIO_INCOMUM = 15
+PESO_VELOCIDADE_TRANSACOES = 25
+PESO_PAIS_ESTRANGEIRO = 25
+PESO_CANAL_SUSPEITO = 15
+PESO_VIAGEM_IMPOSSIVEL = 30
 
 
 def _nivel_por_pontos(pontos: float) -> str:
@@ -183,6 +184,50 @@ def regra_canal_suspeito(tx: Transacao) -> FatorRisco | None:
     )
 
 
+def regra_viagem_impossivel(
+    tx: Transacao,
+    historico_recente: List[Transacao],
+    velocidade_maxima_kmh: float = 800.0,  # avião comercial
+) -> FatorRisco | None:
+    """
+    Detecta transações geograficamente impossíveis em curto intervalo.
+
+    Se o mesmo associado realizou uma transação anterior em local com
+    distância_residencia_km diferente da atual, calcula se seria fisicamente
+    possível deslocar-se entre os dois pontos no tempo disponível.
+    Usa distancia_residencia_km como proxy de localização (sem coordenadas exatas).
+    """
+    for tx_ant in historico_recente:
+        if tx_ant.id == tx.id or tx_ant.associado_id != tx.associado_id:
+            continue
+        # Só avalia transações anteriores à atual
+        if tx_ant.data_hora >= tx.data_hora:
+            continue
+        delta_segundos = (tx.data_hora - tx_ant.data_hora).total_seconds()
+        if delta_segundos <= 0:
+            continue
+        delta_horas = delta_segundos / 3600.0
+        # Distância entre os pontos (diferença das distâncias à residência como proxy)
+        dist_estimada_km = abs(tx.distancia_residencia_km - tx_ant.distancia_residencia_km)
+        if dist_estimada_km < 100:
+            continue  # Pontos próximos — sem suspeita
+        velocidade_necessaria = dist_estimada_km / delta_horas
+        if velocidade_necessaria > velocidade_maxima_kmh:
+            pontos = PESO_VIAGEM_IMPOSSIVEL
+            return FatorRisco(
+                nome="Viagem impossível",
+                descricao=(
+                    f"Transação em local ~{dist_estimada_km:.0f} km distante da anterior "
+                    f"({tx_ant.cidade}, {delta_horas * 60:.0f} min atrás). "
+                    f"Velocidade necessária: {velocidade_necessaria:.0f} km/h — "
+                    "fisicamente impossível sem uso simultâneo do cartão."
+                ),
+                pontos=pontos,
+                nivel=_nivel_por_pontos(pontos),
+            )
+    return None
+
+
 # ---------------------------------------------------------------------------
 # Função principal de avaliação
 # ---------------------------------------------------------------------------
@@ -218,13 +263,17 @@ def avaliar_transacao(
     if r_velocidade is not None:
         fatores.append(r_velocidade)
 
+    r_viagem = regra_viagem_impossivel(tx, historico_recente)
+    if r_viagem is not None:
+        fatores.append(r_viagem)
+
     # Pontuação total limitada a 0-100
     pontuacao = min(100.0, round(sum(f.pontos for f in fatores), 1))
 
     # Nível de risco
-    if pontuacao >= 70:
+    if pontuacao >= 60:
         nivel = "alto"
-    elif pontuacao >= 40:
+    elif pontuacao >= 15:
         nivel = "medio"
     else:
         nivel = "baixo"
