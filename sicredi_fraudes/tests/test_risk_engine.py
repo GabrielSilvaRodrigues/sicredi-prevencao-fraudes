@@ -21,12 +21,19 @@ import pytest
 from src.core.models import Transacao
 from src.core.risk_engine import (
     avaliar_transacao,
+    regra_canal_suspeito,
     regra_categoria_incomum,
     regra_horario_incomum,
     regra_localizacao_incomum,
     regra_pais_estrangeiro,
     regra_valor_alto,
     regra_velocidade_transacoes,
+    regra_viagem_impossivel,
+)
+from src.data.generator import (
+    gerar_dataset_demo,
+    gerar_transacao_suspeita,
+    transacoes_para_dataframe,
 )
 
 HORA_BASE = datetime(2025, 6, 15, 14, 30, 0)
@@ -357,3 +364,264 @@ class TestEstruturaResultado:
             resultado = avaliar_transacao(tx, perfil)
             assert resultado is not None
             assert 0 <= resultado.pontuacao <= 100
+
+
+# ===========================================================================
+# Tarefa 3 — Regra de viagem impossível
+# ===========================================================================
+class TestViagemImpossivel:
+    def _tx_base(self, tx_id: str, dist_km: float, minutos_atras: int = 30):
+        """Cria uma transação-fantasma para o histórico."""
+        return Transacao(
+            id=tx_id,
+            associado_id="TST001",
+            valor=100.0,
+            data_hora=HORA_BASE - timedelta(minutes=minutos_atras),
+            categoria="Supermercado",
+            estabelecimento="Loja Origem",
+            cidade="Porto Alegre",
+            estado="RS",
+            pais="Brasil",
+            distancia_residencia_km=dist_km,
+            canal="Presencial",
+        )
+
+    def test_viagem_impossivel_detectada(self, perfil_padrao):
+        """Transação a 5 km, 30 min após uma a 2000 km — impossível."""
+        tx_atual = Transacao(
+            id="TX_ATUAL",
+            associado_id="TST001",
+            valor=200.0,
+            data_hora=HORA_BASE,
+            categoria="Eletrônicos",
+            estabelecimento="Loja Remota",
+            cidade="São Paulo",
+            estado="SP",
+            pais="Brasil",
+            distancia_residencia_km=2000.0,
+            canal="Presencial",
+        )
+        historico = [self._tx_base("TX_ANT", dist_km=5.0, minutos_atras=30)]
+        fator = regra_viagem_impossivel(tx_atual, historico)
+        assert fator is not None, "Viagem impossível deveria ser detectada"
+        assert fator.pontos > 0
+        assert "impossível" in fator.descricao.lower() or "impossivel" in fator.descricao.lower()
+
+    def test_viagem_possivel_nao_detectada(self, perfil_padrao):
+        """Transação 5 km antes e 5 km agora — sem suspeita."""
+        tx_atual = Transacao(
+            id="TX_PERTO",
+            associado_id="TST001",
+            valor=100.0,
+            data_hora=HORA_BASE,
+            categoria="Supermercado",
+            estabelecimento="Loja Perto",
+            cidade="Canoas",
+            estado="RS",
+            pais="Brasil",
+            distancia_residencia_km=10.0,
+            canal="Presencial",
+        )
+        historico = [self._tx_base("TX_ANT_PERTO", dist_km=8.0, minutos_atras=30)]
+        fator = regra_viagem_impossivel(tx_atual, historico)
+        assert fator is None, "Viagem curta não deve gerar alerta"
+
+    def test_sem_historico_sem_alerta(self):
+        """Sem histórico, a regra não deve disparar."""
+        tx_atual = Transacao(
+            id="TX_SEM_HIST",
+            associado_id="TST001",
+            valor=100.0,
+            data_hora=HORA_BASE,
+            categoria="Supermercado",
+            estabelecimento="Loja",
+            cidade="Porto Alegre",
+            estado="RS",
+            pais="Brasil",
+            distancia_residencia_km=2000.0,
+            canal="Presencial",
+        )
+        fator = regra_viagem_impossivel(tx_atual, [])
+        assert fator is None
+
+    def test_historico_diferente_associado_ignorado(self):
+        """Transações de outro associado não devem interferir."""
+        tx_atual = Transacao(
+            id="TX_MINE",
+            associado_id="TST001",
+            valor=100.0,
+            data_hora=HORA_BASE,
+            categoria="Supermercado",
+            estabelecimento="Loja",
+            cidade="Porto Alegre",
+            estado="RS",
+            pais="Brasil",
+            distancia_residencia_km=2000.0,
+            canal="Presencial",
+        )
+        tx_outro = Transacao(
+            id="TX_OUTRO",
+            associado_id="TST999",  # associado diferente
+            valor=100.0,
+            data_hora=HORA_BASE - timedelta(minutes=10),
+            categoria="Supermercado",
+            estabelecimento="Loja Outro",
+            cidade="Porto Alegre",
+            estado="RS",
+            pais="Brasil",
+            distancia_residencia_km=5.0,
+            canal="Presencial",
+        )
+        fator = regra_viagem_impossivel(tx_atual, [tx_outro])
+        assert fator is None
+
+    def test_viagem_impossivel_contribui_para_pontuacao(self, perfil_padrao):
+        """A regra deve aumentar a pontuação total ao ser incluída no histórico."""
+        tx_atual = Transacao(
+            id="TX_VIAGEM",
+            associado_id="TST001",
+            valor=180.0,
+            data_hora=HORA_BASE,
+            categoria="Supermercado",
+            estabelecimento="Zaffari Remoto",
+            cidade="Porto Alegre",
+            estado="RS",
+            pais="Brasil",
+            distancia_residencia_km=2000.0,
+            canal="Presencial",
+        )
+        historico_suspeito = [
+            Transacao(
+                id="TX_LONGE",
+                associado_id="TST001",
+                valor=100.0,
+                data_hora=HORA_BASE - timedelta(minutes=20),
+                categoria="Supermercado",
+                estabelecimento="Loja Distante",
+                cidade="Miami",
+                estado="FL",
+                pais="Estados Unidos",
+                distancia_residencia_km=5.0,
+                canal="Presencial",
+            )
+        ]
+        r_com = avaliar_transacao(tx_atual, perfil_padrao, historico_suspeito)
+        r_sem = avaliar_transacao(tx_atual, perfil_padrao, [])
+        assert r_com.pontuacao > r_sem.pontuacao
+
+
+# ===========================================================================
+# Tarefa 4 — Cobertura expandida: generator e regras adicionais
+# ===========================================================================
+class TestGeneratorCobertura:
+    """Testes de cobertura para src/data/generator.py."""
+
+    def test_gerar_transacao_suspeita_valor_alto(self, perfil_padrao):
+        import random
+        rng = random.Random(1)
+        tx = gerar_transacao_suspeita("TST001", perfil_padrao, "valor_alto", rng)
+        assert tx.valor > perfil_padrao.valor_medio_transacao + perfil_padrao.desvio_padrao_valor * 2
+
+    def test_gerar_transacao_suspeita_localizacao_incomum(self, perfil_padrao):
+        import random
+        rng = random.Random(2)
+        tx = gerar_transacao_suspeita("TST001", perfil_padrao, "localizacao_incomum", rng)
+        assert tx.cidade.lower() not in [c.lower() for c in perfil_padrao.cidades_frequentes]
+        assert tx.distancia_residencia_km >= 300
+
+    def test_gerar_transacao_suspeita_horario_incomum(self, perfil_padrao):
+        import random
+        rng = random.Random(3)
+        tx = gerar_transacao_suspeita("TST001", perfil_padrao, "horario_incomum", rng)
+        assert 1 <= tx.data_hora.hour <= 4
+
+    def test_gerar_transacao_suspeita_categoria_incomum(self, perfil_padrao):
+        import random
+        rng = random.Random(4)
+        tx = gerar_transacao_suspeita("TST001", perfil_padrao, "categoria_incomum", rng)
+        assert tx.categoria.lower() not in [c.lower() for c in perfil_padrao.categorias_frequentes]
+
+    def test_gerar_transacao_suspeita_pais_estrangeiro(self, perfil_padrao):
+        import random
+        rng = random.Random(5)
+        tx = gerar_transacao_suspeita("TST001", perfil_padrao, "pais_estrangeiro", rng)
+        assert tx.pais.lower() not in ("brasil", "brazil")
+
+    def test_gerar_transacao_suspeita_multiplos_sinais(self, perfil_padrao):
+        import random
+        rng = random.Random(6)
+        tx = gerar_transacao_suspeita("TST001", perfil_padrao, "multiplos_sinais", rng)
+        resultado = avaliar_transacao(tx, perfil_padrao)
+        assert len(resultado.fatores) >= 2
+
+    def test_transacoes_para_dataframe_lista_vazia(self):
+        df = transacoes_para_dataframe([])
+        assert len(df) == 0
+        assert list(df.columns) == []  # DataFrame vazio sem colunas definidas
+
+    def test_gerar_dataset_demo_retorna_transacoes(self):
+        perfis, txs = gerar_dataset_demo(n_normais=5, n_suspeitas=2)
+        assert len(txs) > 0
+        assert len(perfis) > 0
+
+    def test_gerar_dataset_demo_ordenado_por_data(self):
+        _, txs = gerar_dataset_demo(n_normais=10, n_suspeitas=3)
+        datas = [t.data_hora for t in txs]
+        assert datas == sorted(datas)
+
+
+class TestRegrasAdicionais:
+    """Testes adicionais para regras não cobertas anteriormente."""
+
+    def test_canal_suspeito_detectado(self, perfil_padrao):
+        tx = Transacao(
+            id="TX_ONLINE_ALTO",
+            associado_id="TST001",
+            valor=1500.0,
+            data_hora=HORA_BASE,
+            categoria="Eletrônicos",
+            estabelecimento="Fast Shop Online",
+            cidade="Porto Alegre",
+            estado="RS",
+            pais="Brasil",
+            distancia_residencia_km=0.0,
+            canal="Online",
+        )
+        fator = regra_canal_suspeito(tx)
+        assert fator is not None
+        assert fator.pontos > 0
+
+    def test_canal_suspeito_valor_baixo_nao_penaliza(self, perfil_padrao):
+        tx = Transacao(
+            id="TX_ONLINE_BAIXO",
+            associado_id="TST001",
+            valor=100.0,
+            data_hora=HORA_BASE,
+            categoria="Supermercado",
+            estabelecimento="iFood",
+            cidade="Porto Alegre",
+            estado="RS",
+            pais="Brasil",
+            distancia_residencia_km=0.0,
+            canal="Online",
+        )
+        fator = regra_canal_suspeito(tx)
+        assert fator is None
+
+    def test_pais_brazil_ingles_sem_penalizacao(self, perfil_padrao):
+        """'Brazil' (em inglês) também deve ser aceito como país doméstico."""
+        tx = Transacao(
+            id="TX_BRAZIL",
+            associado_id="TST001",
+            valor=100.0,
+            data_hora=HORA_BASE,
+            categoria="Supermercado",
+            estabelecimento="Loja",
+            cidade="Porto Alegre",
+            estado="RS",
+            pais="Brazil",
+            distancia_residencia_km=5.0,
+            canal="Presencial",
+        )
+        fator = regra_pais_estrangeiro(tx, perfil_padrao)
+        assert fator is None
