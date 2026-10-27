@@ -135,6 +135,7 @@ Explicação (máximo 3 parágrafos):"""
 
 def status_integracao() -> dict:
     """Retorna o status atual da integração com o watsonx."""
+    config = _get_config()
     return {
         "habilitado": WATSONX_ENABLED,
         "mensagem": (
@@ -142,4 +143,5 @@ def status_integracao() -> dict:
             if WATSONX_ENABLED
             else "⚙️ watsonx não configurado — sistema operando com motor local."
         ),
+        "modelo": config.model_id if config else "—",
     }

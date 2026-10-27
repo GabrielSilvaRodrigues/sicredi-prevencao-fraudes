@@ -151,12 +151,24 @@ with st.sidebar:
     )
     st.markdown("---")
 
-    # Status watsonx
+    # Status watsonx — indicador aprimorado
     status = status_integracao()
     if status["habilitado"]:
-        st.success(status["mensagem"])
+        st.markdown(
+            f'<div style="background:#0f4c25;border:1px solid #16a34a;border-radius:8px;padding:8px 12px;margin-bottom:4px;">'
+            f'<span style="font-size:1.1em;">✅</span> <strong>watsonx ativo</strong><br>'
+            f'<span style="font-size:0.78em;color:#86efac;">Modelo: {status.get("modelo", "granite")}</span>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
     else:
-        st.warning(status["mensagem"])
+        st.markdown(
+            '<div style="background:#4a1a0a;border:1px solid #d97706;border-radius:8px;padding:8px 12px;margin-bottom:4px;">'
+            '<span style="font-size:1.1em;">⚙️</span> <strong>watsonx não configurado</strong><br>'
+            '<span style="font-size:0.78em;color:#fcd34d;">Configure o .env com WATSONX_API_KEY e WATSONX_PROJECT_ID para ativar</span>'
+            '</div>',
+            unsafe_allow_html=True,
+        )
 
     st.markdown(
         '<div style="font-size:0.75em;margin-top:12px;color:#8facc8;">'
@@ -246,6 +258,67 @@ if pagina == "📊 Painel":
 
     st.markdown("---")
 
+    # --- Série temporal de transações ---
+    st.subheader("Valor das Transações ao Longo do Tempo")
+    df_ts = transacoes_para_dataframe(transacoes)
+    # Adiciona nível de risco ao dataframe
+    df_ts["nivel_risco"] = df_ts["id"].apply(
+        lambda tid: resultados[tid].nivel_risco.capitalize() if tid in resultados else "baixo"
+    )
+    df_ts["pontuacao"] = df_ts["id"].apply(
+        lambda tid: resultados[tid].pontuacao if tid in resultados else 0
+    )
+    fig_ts = px.scatter(
+        df_ts,
+        x="data_hora",
+        y="valor",
+        color="nivel_risco",
+        color_discrete_map={"Baixo": "#16a34a", "Medio": "#d97706", "Alto": "#dc2626"},
+        hover_data={"associado_id": True, "categoria": True, "pontuacao": True, "cidade": True},
+        labels={"data_hora": "Data/Hora", "valor": "Valor (R$)", "nivel_risco": "Risco"},
+        size="pontuacao",
+        size_max=18,
+    )
+    # Linha de tendência do valor
+    fig_ts.add_traces(
+        px.line(df_ts.sort_values("data_hora"), x="data_hora", y="valor",
+                color_discrete_sequence=["#94a3b8"]).data
+    )
+    fig_ts.update_traces(selector=dict(mode="lines"), line=dict(width=1, dash="dot"), showlegend=False)
+    fig_ts.update_layout(margin=dict(t=10, b=10, l=0, r=0), height=320, legend_title_text="Nível de Risco")
+    st.plotly_chart(fig_ts, width="stretch")
+
+    st.markdown("---")
+
+    # --- Mapa de calor: categoria × nível de risco ---
+    st.subheader("Distribuição de Risco por Categoria")
+    df_heat = df_ts.copy()
+    heat_pivot = (
+        df_heat.groupby(["categoria", "nivel_risco"])
+        .size()
+        .reset_index(name="qtd")
+        .pivot(index="categoria", columns="nivel_risco", values="qtd")
+        .fillna(0)
+        .astype(int)
+    )
+    # Garante colunas na ordem certa
+    for col in ["Baixo", "Medio", "Alto"]:
+        if col not in heat_pivot.columns:
+            heat_pivot[col] = 0
+    heat_pivot = heat_pivot[["Baixo", "Medio", "Alto"]]
+    fig_heat = px.imshow(
+        heat_pivot,
+        color_continuous_scale=[[0, "#f0fdf4"], [0.5, "#fef9c3"], [1, "#fef2f2"]],
+        labels={"x": "Nível de Risco", "y": "Categoria", "color": "Qtd"},
+        text_auto=True,
+        aspect="auto",
+    )
+    fig_heat.update_layout(margin=dict(t=10, b=10, l=0, r=0), height=350,
+                           coloraxis_showscale=False)
+    st.plotly_chart(fig_heat, width="stretch")
+
+    st.markdown("---")
+
     # --- Lista de transações com filtros ---
     st.subheader("Transações Recentes")
 
@@ -296,6 +369,15 @@ if pagina == "📊 Painel":
             df_tabela.style.map(lambda v: _cor_linha(v), subset=["Risco"]),
             width="stretch",
             hide_index=True,
+        )
+
+        # --- Exportar CSV ---
+        csv_bytes = df_tabela.to_csv(index=False).encode("utf-8")
+        st.download_button(
+            label="📥 Exportar tabela como CSV",
+            data=csv_bytes,
+            file_name="relatorio_fraudes_sicredi.csv",
+            mime="text/csv",
         )
     else:
         st.info("Nenhuma transação encontrada com os filtros selecionados.")
@@ -433,22 +515,22 @@ elif pagina == "🧪 Simulador":
 """)
 
     if st.button("🔍 Analisar transação"):
-        tx_sim = Transacao(
-            id=str(uuid.uuid4())[:12],
-            associado_id=associado_id,
-            valor=valor,
-            data_hora=datetime.now().replace(hour=hora_tx, minute=0, second=0, microsecond=0),
-            categoria=categoria,
-            estabelecimento=estabelecimento,
-            cidade=cidade,
-            estado=estado,
-            pais=pais,
-            distancia_residencia_km=distancia,
-            canal=canal,
-        )
-
-        historico = [t for t in transacoes if t.associado_id == associado_id]
-        resultado_sim = avaliar_transacao(tx_sim, perfil_sim, historico)
+        with st.spinner("Analisando transação..."):
+            tx_sim = Transacao(
+                id=str(uuid.uuid4())[:12],
+                associado_id=associado_id,
+                valor=valor,
+                data_hora=datetime.now().replace(hour=hora_tx, minute=0, second=0, microsecond=0),
+                categoria=categoria,
+                estabelecimento=estabelecimento,
+                cidade=cidade,
+                estado=estado,
+                pais=pais,
+                distancia_residencia_km=distancia,
+                canal=canal,
+            )
+            historico = [t for t in transacoes if t.associado_id == associado_id]
+            resultado_sim = avaliar_transacao(tx_sim, perfil_sim, historico)
 
         # Salva no histórico
         st.session_state["historico_analises"].append({
@@ -500,6 +582,32 @@ elif pagina == "🧪 Simulador":
                     st.markdown(f"- {ICONES_RISCO[f.nivel]} **{f.nome}** (+{f.pontos:.0f} pts): {f.descricao}")
             else:
                 st.success("Nenhum fator de risco identificado.")
+
+        # --- Comparação visual: valor simulado vs perfil habitual ---
+        st.markdown("---")
+        st.subheader("Comparação com Perfil Habitual")
+        media = perfil_sim.valor_medio_transacao
+        desvio = perfil_sim.desvio_padrao_valor
+        limite_normal = media + 2 * desvio
+
+        df_comp = pd.DataFrame({
+            "Referência": ["Valor simulado", "Média habitual", "Limite normal (+2σ)"],
+            "Valor (R$)": [valor, media, limite_normal],
+            "Cor": [cor, "#1a3a5c", "#6b7280"],
+        })
+        fig_comp = px.bar(
+            df_comp, x="Referência", y="Valor (R$)",
+            color="Referência",
+            color_discrete_map={
+                "Valor simulado": cor,
+                "Média habitual": "#1a3a5c",
+                "Limite normal (+2σ)": "#6b7280",
+            },
+            text_auto=".2f",
+        )
+        fig_comp.update_layout(height=260, margin=dict(t=10, b=10, l=0, r=0),
+                               showlegend=False)
+        st.plotly_chart(fig_comp, width="stretch")
 
         st.caption("⚠️ Simulação com dados fictícios. Não representa operação real.")
 
