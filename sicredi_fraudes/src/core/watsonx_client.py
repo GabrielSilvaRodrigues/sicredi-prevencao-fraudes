@@ -36,14 +36,14 @@ class WatsonxConfig:
     api_key: str
     project_id: str
     url: str
-    model_id: str = "ibm/granite-13b-instruct-v2"
+    model_id: str = "meta-llama/llama-3-3-70b-instruct"
 
 
 def _get_config() -> Optional[WatsonxConfig]:
     api_key = os.getenv("WATSONX_API_KEY", "")
     project_id = os.getenv("WATSONX_PROJECT_ID", "")
     url = os.getenv("WATSONX_URL", "https://us-south.ml.cloud.ibm.com")
-    model_id = os.getenv("WATSONX_MODEL_ID", "ibm/granite-13b-instruct-v2")
+    model_id = os.getenv("WATSONX_MODEL_ID", "meta-llama/llama-3-3-70b-instruct")
     if api_key and project_id:
         return WatsonxConfig(api_key=api_key, project_id=project_id, url=url, model_id=model_id)
     return None
@@ -102,11 +102,17 @@ def enriquecer_explicacao(
             api_client=client,
             project_id=config.project_id,
         )
-        resposta = model.generate_text(
-            prompt=prompt,
-            params={"max_new_tokens": 300, "temperature": 0.2},
-        )
-        return str(resposta).strip()
+        # Usa a API de chat (não depreciada) quando disponível, com fallback para generate_text
+        try:
+            messages = [{"role": "user", "content": prompt}]
+            resposta = model.chat(messages=messages, params={"max_tokens": 300, "temperature": 0.2})
+            return str(resposta["choices"][0]["message"]["content"]).strip()
+        except Exception:
+            resposta = model.generate_text(
+                prompt=prompt,
+                params={"max_new_tokens": 300, "temperature": 0.2},
+            )
+            return str(resposta).strip()
     except Exception as exc:  # noqa: BLE001
         # Falha silenciosa: o sistema continua com a explicação local
         print(f"[watsonx] Aviso: não foi possível obter explicação ({exc})")
